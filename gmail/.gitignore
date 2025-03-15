@@ -1,0 +1,14 @@
+# Ignore sensitive credential files
+credentials.json
+token.json
+
+# Ignore Python cache files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Ignore IDE files
+.idea/
+
+# Ignore test reports
+test_report.json
