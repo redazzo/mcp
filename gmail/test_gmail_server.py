@@ -12,15 +12,9 @@ logging.basicConfig(
 )
 logger = logging.getLogger('TestGmailServer')
 
-# Import the modules from gmail_server.py
-from gmail_server import (
-    get_credentials,
-    format_email_metadata,
-    get_message_content,
-    gmail_service
-)
-
-# Import Google API libraries
+# Import the modules from our new structure
+from gmail.auth import GmailClient, SCOPES
+from gmail.utils import format_email_metadata, get_message_content
 from googleapiclient.discovery import build
 
 class TestGmailServer(unittest.TestCase):
@@ -33,7 +27,8 @@ class TestGmailServer(unittest.TestCase):
         
         # Get credentials and build the service
         logger.info("Getting Gmail API credentials")
-        cls.creds = get_credentials()
+        cls.client = GmailClient()
+        cls.creds = cls.client.get_credentials()
         logger.info("Building Gmail service")
         cls.service = build('gmail', 'v1', credentials=cls.creds)
         
@@ -102,7 +97,8 @@ class TestGmailServer(unittest.TestCase):
     def test_get_credentials(self):
         """Test that credentials can be obtained and are valid"""
         logger.info("Testing credential retrieval")
-        creds = get_credentials()
+        client = GmailClient()
+        creds = client.get_credentials()
         logger.info(f"Credentials obtained, valid: {creds.valid}")
         self.assertIsNotNone(creds, "Credentials should not be None")
         self.assertTrue(creds.valid, "Credentials should be valid")

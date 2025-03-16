@@ -12,3 +12,15 @@ __pycache__/
 
 # Ignore test reports
 test_report.json
+
+# Ignore virtual environment, build, and dist files
+.venv/
+build/
+dist/
+
+# Ignore executables and spec files
+*.exe
+*.spec
+
+# Ignore logs
+*.log

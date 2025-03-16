@@ -39,22 +39,11 @@ def confirm_gmail_write(operation_description):
         print("Operation REJECTED. Skipping...\n")
         return False
 
-# Import the modules from gmail_server.py
-import gmail_server
-from gmail_server import (
-    mcp,
-    gmail_lifespan,
-    get_credentials,
-    send_email,
-    search_emails_tool,
-    create_draft,
-    add_label_to_message,
-    get_thread,
-    mark_as_read,
-    mark_as_unread,
-    archive_message,
-    trash_message
-)
+# Import the modules from our new structure
+from gmail.auth import GmailClient
+from gmail.server import create_server, gmail_lifespan
+from gmail.mcp.resources import GmailResources
+from gmail.mcp.tools import GmailTools
 
 # Import Google API libraries
 from googleapiclient.discovery import build
@@ -69,9 +58,14 @@ class TestGmailMCP(unittest.TestCase):
         
         # Get credentials and build the service
         logger.info("Getting Gmail API credentials")
-        cls.creds = get_credentials()
+        cls.client = GmailClient()
+        cls.creds = cls.client.get_credentials()
         logger.info("Building Gmail service")
         cls.service = build('gmail', 'v1', credentials=cls.creds)
+        
+        # Create the MCP server
+        logger.info("Creating MCP server")
+        cls.mcp = create_server()
         
         # Create a unique identifier for test resources
         cls.test_id = f"test_{int(time.time())}"
@@ -230,12 +224,16 @@ class TestGmailMCP(unittest.TestCase):
         
         # Initialize the Gmail service
         logger.info("Initializing Gmail service for test")
-        gmail_server.gmail_service = self.service
+        client = GmailClient()
+        client.service = self.service
+        
+        # Create resources
+        logger.info("Creating GmailResources")
+        resources = GmailResources(self.__class__.mcp, client)
         
         # Call the resource handler directly
         logger.info("Calling get_labels resource handler")
-        from gmail_server import get_labels
-        result = get_labels()
+        result = resources.get_labels()
         
         # Log the result (truncated)
         result_preview = result[:200] + "..." if len(result) > 200 else result
@@ -256,12 +254,16 @@ class TestGmailMCP(unittest.TestCase):
         
         # Initialize the Gmail service
         logger.info("Initializing Gmail service for test")
-        gmail_server.gmail_service = self.service
+        client = GmailClient()
+        client.service = self.service
+        
+        # Create resources
+        logger.info("Creating GmailResources")
+        resources = GmailResources(self.__class__.mcp, client)
         
         # Call the resource handler directly
         logger.info("Calling get_inbox resource handler")
-        from gmail_server import get_inbox
-        result = get_inbox()
+        result = resources.get_inbox()
         
         # Log the result (truncated)
         result_preview = result[:200] + "..." if len(result) > 200 else result
@@ -290,12 +292,16 @@ class TestGmailMCP(unittest.TestCase):
         
         # Initialize the Gmail service
         logger.info("Initializing Gmail service for test")
-        gmail_server.gmail_service = self.service
+        client = GmailClient()
+        client.service = self.service
+        
+        # Create resources
+        logger.info("Creating GmailResources")
+        resources = GmailResources(self.__class__.mcp, client)
         
         # Call the resource handler directly
         logger.info(f"Calling get_message resource handler with ID: {self.test_message_id}")
-        from gmail_server import get_message
-        result = get_message(self.test_message_id)
+        result = resources.get_message(self.test_message_id)
         
         # Log the result (truncated)
         result_preview = result[:200] + "..." if len(result) > 200 else result
@@ -318,13 +324,17 @@ class TestGmailMCP(unittest.TestCase):
         
         # Initialize the Gmail service
         logger.info("Initializing Gmail service for test")
-        gmail_server.gmail_service = self.service
+        client = GmailClient()
+        client.service = self.service
+        
+        # Create resources
+        logger.info("Creating GmailResources")
+        resources = GmailResources(self.__class__.mcp, client)
         
         # Call the resource handler directly with a query that should match our test message
         search_query = "subject:Test"
         logger.info(f"Calling search_emails resource handler with query: {search_query}")
-        from gmail_server import search_emails
-        result = search_emails(search_query)
+        result = resources.search_emails(search_query)
         
         # Log the result (truncated)
         result_preview = result[:200] + "..." if len(result) > 200 else result
@@ -345,7 +355,12 @@ class TestGmailMCP(unittest.TestCase):
         
         # Initialize the Gmail service
         logger.info("Initializing Gmail service for test")
-        gmail_server.gmail_service = self.service
+        client = GmailClient()
+        client.service = self.service
+        
+        # Create tools
+        logger.info("Creating GmailTools")
+        tools = GmailTools(self.__class__.mcp, client)
         
         # Get the user's email address
         logger.info("Getting user's email address")
@@ -359,7 +374,7 @@ class TestGmailMCP(unittest.TestCase):
         logger.info(f"Email details - To: {user_email}, Subject: {subject}")
         
         if confirm_gmail_write(f"Send test email to {user_email} with subject '{subject}'"):
-            result = send_email(
+            result = tools.send_email(
                 to=user_email,
                 subject=subject,
                 body=body
@@ -384,14 +399,19 @@ class TestGmailMCP(unittest.TestCase):
         
         # Initialize the Gmail service
         logger.info("Initializing Gmail service for test")
-        gmail_server.gmail_service = self.service
+        client = GmailClient()
+        client.service = self.service
+        
+        # Create tools
+        logger.info("Creating GmailTools")
+        tools = GmailTools(self.__class__.mcp, client)
         
         # Call the tool handler directly
         search_query = "subject:Test"
         max_results = 5
         logger.info(f"Calling search_emails_tool with query: {search_query}, max_results: {max_results}")
         
-        result = search_emails_tool(
+        result = tools.search_emails_tool(
             query=search_query,
             max_results=max_results
         )
@@ -411,7 +431,12 @@ class TestGmailMCP(unittest.TestCase):
         
         # Initialize the Gmail service
         logger.info("Initializing Gmail service for test")
-        gmail_server.gmail_service = self.service
+        client = GmailClient()
+        client.service = self.service
+        
+        # Create tools
+        logger.info("Creating GmailTools")
+        tools = GmailTools(self.__class__.mcp, client)
         
         # Get the user's email address
         logger.info("Getting user's email address")
@@ -425,7 +450,7 @@ class TestGmailMCP(unittest.TestCase):
         logger.info(f"Draft details - To: {user_email}, Subject: {subject}")
         
         if confirm_gmail_write(f"Create test draft email to {user_email} with subject '{subject}'"):
-            result = create_draft(
+            result = tools.create_draft(
                 to=user_email,
                 subject=subject,
                 body=body
@@ -472,13 +497,18 @@ class TestGmailMCP(unittest.TestCase):
         
         # Initialize the Gmail service
         logger.info("Initializing Gmail service for test")
-        gmail_server.gmail_service = self.service
+        client = GmailClient()
+        client.service = self.service
+        
+        # Create tools
+        logger.info("Creating GmailTools")
+        tools = GmailTools(self.__class__.mcp, client)
         
         # Call the tool handler directly
         logger.info(f"Calling add_label_to_message with message ID: {self.test_message_id}, label: {self.test_label_name}")
         
         if confirm_gmail_write(f"Add label '{self.test_label_name}' to message with ID: {self.test_message_id}"):
-            result = add_label_to_message(
+            result = tools.add_label_to_message(
                 message_id=self.test_message_id,
                 label_name=self.test_label_name
             )
@@ -514,11 +544,16 @@ class TestGmailMCP(unittest.TestCase):
         
         # Initialize the Gmail service
         logger.info("Initializing Gmail service for test")
-        gmail_server.gmail_service = self.service
+        client = GmailClient()
+        client.service = self.service
+        
+        # Create tools
+        logger.info("Creating GmailTools")
+        tools = GmailTools(self.__class__.mcp, client)
         
         # Call the tool handler directly
         logger.info(f"Calling get_thread with thread ID: {self.test_thread_id}")
-        result = get_thread(self.test_thread_id)
+        result = tools.get_thread(self.test_thread_id)
         
         # Log the result (truncated)
         result_preview = result[:200] + "..." if len(result) > 200 else result
@@ -544,13 +579,18 @@ class TestGmailMCP(unittest.TestCase):
         
         # Initialize the Gmail service
         logger.info("Initializing Gmail service for test")
-        gmail_server.gmail_service = self.service
+        client = GmailClient()
+        client.service = self.service
+        
+        # Create tools
+        logger.info("Creating GmailTools")
+        tools = GmailTools(self.__class__.mcp, client)
         
         # Call the mark_as_read tool handler directly
         logger.info(f"Calling mark_as_read with message ID: {self.test_message_id}")
         
         if confirm_gmail_write(f"Mark message with ID: {self.test_message_id} as read"):
-            result_read = mark_as_read(self.test_message_id)
+            result_read = tools.mark_as_read(self.test_message_id)
             
             # Log the result
             logger.info(f"mark_as_read result: {result_read}")
@@ -570,7 +610,7 @@ class TestGmailMCP(unittest.TestCase):
             logger.info(f"Calling mark_as_unread with message ID: {self.test_message_id}")
             
             if confirm_gmail_write(f"Mark message with ID: {self.test_message_id} as unread"):
-                result_unread = mark_as_unread(self.test_message_id)
+                result_unread = tools.mark_as_unread(self.test_message_id)
                 
                 # Log the result
                 logger.info(f"mark_as_unread result: {result_unread}")
@@ -605,7 +645,12 @@ class TestGmailMCP(unittest.TestCase):
         
         # Initialize the Gmail service
         logger.info("Initializing Gmail service for test")
-        gmail_server.gmail_service = self.service
+        client = GmailClient()
+        client.service = self.service
+        
+        # Create tools
+        logger.info("Creating GmailTools")
+        tools = GmailTools(self.__class__.mcp, client)
         
         # First, make sure the message has the INBOX label
         logger.info(f"Ensuring message {self.test_thread_message_id} has INBOX label")
@@ -631,7 +676,7 @@ class TestGmailMCP(unittest.TestCase):
             logger.info(f"Calling archive_message with message ID: {self.test_thread_message_id}")
             
             if confirm_gmail_write(f"Archive message with ID: {self.test_thread_message_id}"):
-                result = archive_message(self.test_thread_message_id)
+                result = tools.archive_message(self.test_thread_message_id)
                 
                 # Log the result
                 logger.info(f"Tool result: {result}")
@@ -665,13 +710,18 @@ class TestGmailMCP(unittest.TestCase):
         
         # Initialize the Gmail service
         logger.info("Initializing Gmail service for test")
-        gmail_server.gmail_service = self.service
+        client = GmailClient()
+        client.service = self.service
+        
+        # Create tools
+        logger.info("Creating GmailTools")
+        tools = GmailTools(self.__class__.mcp, client)
         
         # Call the trash_message tool handler directly
         logger.info(f"Calling trash_message with message ID: {self.test_thread_message_id}")
         
         if confirm_gmail_write(f"Move message with ID: {self.test_thread_message_id} to trash"):
-            result = trash_message(self.test_thread_message_id)
+            result = tools.trash_message(self.test_thread_message_id)
             
             # Log the result
             logger.info(f"Tool result: {result}")

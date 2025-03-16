@@ -3,19 +3,18 @@ import argparse
 import sys
 import os
 import json
-from gmail_server import (
-    get_credentials, 
-    build, 
-    format_email_metadata, 
-    get_message_content,
-    SCOPES
-)
+from gmail.auth import GmailClient, SCOPES
+from gmail.utils import format_email_metadata, get_message_content
+from gmail.api.labels import LabelOperations
+from gmail.api.messages import MessageOperations
+from gmail.api.drafts import DraftOperations
+from gmail.api.threads import ThreadOperations
 
 def initialize_gmail_service():
     """Initialize the Gmail API service"""
     try:
-        creds = get_credentials()
-        service = build('gmail', 'v1', credentials=creds)
+        client = GmailClient()
+        service = client.authenticate()
         return service
     except Exception as e:
         print(f"Error initializing Gmail service: {str(e)}")
@@ -24,8 +23,8 @@ def initialize_gmail_service():
 def list_labels(service):
     """List all Gmail labels"""
     try:
-        results = service.users().labels().list(userId='me').execute()
-        labels = results.get('labels', [])
+        label_ops = LabelOperations(service)
+        labels = label_ops.list_labels()
         
         if not labels:
             print("No labels found.")
@@ -40,9 +39,8 @@ def list_labels(service):
 def list_inbox(service, max_results=10):
     """List recent messages from the inbox"""
     try:
-        results = service.users().messages().list(
-            userId='me', labelIds=['INBOX'], maxResults=max_results).execute()
-        messages = results.get('messages', [])
+        message_ops = MessageOperations(service)
+        messages = message_ops.list_messages(label_ids=['INBOX'], max_results=max_results)
         
         if not messages:
             print("No messages found in inbox.")
@@ -50,7 +48,7 @@ def list_inbox(service, max_results=10):
         
         print(f"Recent Inbox Messages (showing {len(messages)} of {max_results} requested):")
         for msg in messages:
-            message = service.users().messages().get(userId='me', id=msg['id']).execute()
+            message = message_ops.get_message(msg['id'])
             meta = format_email_metadata(message)
             print(f"\nID: {meta['id']}")
             print(f"From: {meta['from']}")
@@ -64,7 +62,8 @@ def list_inbox(service, max_results=10):
 def get_message(service, message_id):
     """Get a specific message by ID"""
     try:
-        message = service.users().messages().get(userId='me', id=message_id).execute()
+        message_ops = MessageOperations(service)
+        message = message_ops.get_message(message_id)
         meta = format_email_metadata(message)
         content = get_message_content(message)
         
@@ -80,9 +79,8 @@ def get_message(service, message_id):
 def search_emails(service, query, max_results=10):
     """Search for emails using Gmail search syntax"""
     try:
-        results = service.users().messages().list(
-            userId='me', q=query, maxResults=max_results).execute()
-        messages = results.get('messages', [])
+        message_ops = MessageOperations(service)
+        messages = message_ops.list_messages(query=query, max_results=max_results)
         
         if not messages:
             print(f"No messages found matching: {query}")
@@ -90,7 +88,7 @@ def search_emails(service, query, max_results=10):
         
         print(f"Search Results for '{query}' (showing {len(messages)} of {max_results} requested):")
         for msg in messages:
-            message = service.users().messages().get(userId='me', id=msg['id']).execute()
+            message = message_ops.get_message(msg['id'])
             meta = format_email_metadata(message)
             print(f"\nID: {meta['id']}")
             print(f"From: {meta['from']}")
@@ -103,48 +101,30 @@ def search_emails(service, query, max_results=10):
 
 def send_email(service, to, subject, body):
     """Send an email"""
-    from email.mime.text import MIMEText
-    import base64
-    
     try:
-        message = MIMEText(body)
-        message['to'] = to
-        message['subject'] = subject
-        
-        raw_message = base64.urlsafe_b64encode(message.as_string().encode('utf-8')).decode('utf-8')
-        
-        message = service.users().messages().send(
-            userId='me', body={'raw': raw_message}).execute()
-        print(f"Email sent successfully to {to}. Message ID: {message['id']}")
+        message_ops = MessageOperations(service)
+        result = message_ops.send_message(to, subject, body)
+        print(f"Email sent successfully to {to}. Message ID: {result['id']}")
     except Exception as e:
         print(f"Error sending email: {str(e)}")
 
 def create_draft(service, to, subject, body):
     """Create a draft email"""
-    from email.mime.text import MIMEText
-    import base64
-    
     try:
-        message = MIMEText(body)
-        message['to'] = to
-        message['subject'] = subject
-        
-        raw_message = base64.urlsafe_b64encode(message.as_string().encode('utf-8')).decode('utf-8')
-        
-        draft = service.users().drafts().create(
-            userId='me', 
-            body={'message': {'raw': raw_message}}
-        ).execute()
-        print(f"Draft created successfully. Draft ID: {draft['id']}")
+        draft_ops = DraftOperations(service)
+        result = draft_ops.create_draft(to, subject, body)
+        print(f"Draft created successfully. Draft ID: {result['id']}")
     except Exception as e:
         print(f"Error creating draft: {str(e)}")
 
 def add_label(service, message_id, label_name):
     """Add a label to a specific message"""
     try:
+        label_ops = LabelOperations(service)
+        message_ops = MessageOperations(service)
+        
         # First check if label exists
-        results = service.users().labels().list(userId='me').execute()
-        labels = results.get('labels', [])
+        labels = label_ops.list_labels()
         
         label_id = None
         for label in labels:
@@ -154,19 +134,12 @@ def add_label(service, message_id, label_name):
         
         # If label doesn't exist, create it
         if not label_id:
-            created_label = service.users().labels().create(
-                userId='me',
-                body={'name': label_name}
-            ).execute()
+            created_label = label_ops.create_label(label_name)
             label_id = created_label['id']
             print(f"Created new label: {label_name}")
         
         # Add label to message
-        service.users().messages().modify(
-            userId='me',
-            id=message_id,
-            body={'addLabelIds': [label_id]}
-        ).execute()
+        message_ops.modify_message(message_id, add_label_ids=[label_id])
         print(f"Label '{label_name}' added to message {message_id}")
     except Exception as e:
         print(f"Error adding label to message: {str(e)}")
@@ -174,7 +147,8 @@ def add_label(service, message_id, label_name):
 def get_thread(service, thread_id):
     """Get all messages in a thread"""
     try:
-        thread = service.users().threads().get(userId='me', id=thread_id).execute()
+        thread_ops = ThreadOperations(service)
+        thread = thread_ops.get_thread(thread_id)
         messages = thread.get('messages', [])
         
         if not messages:
@@ -198,11 +172,8 @@ def get_thread(service, thread_id):
 def mark_as_read(service, message_id):
     """Mark a message as read"""
     try:
-        service.users().messages().modify(
-            userId='me',
-            id=message_id,
-            body={'removeLabelIds': ['UNREAD']}
-        ).execute()
+        message_ops = MessageOperations(service)
+        message_ops.mark_as_read(message_id)
         print(f"Message {message_id} marked as read")
     except Exception as e:
         print(f"Error marking message as read: {str(e)}")
@@ -210,11 +181,8 @@ def mark_as_read(service, message_id):
 def mark_as_unread(service, message_id):
     """Mark a message as unread"""
     try:
-        service.users().messages().modify(
-            userId='me',
-            id=message_id,
-            body={'addLabelIds': ['UNREAD']}
-        ).execute()
+        message_ops = MessageOperations(service)
+        message_ops.mark_as_unread(message_id)
         print(f"Message {message_id} marked as unread")
     except Exception as e:
         print(f"Error marking message as unread: {str(e)}")
@@ -222,11 +190,8 @@ def mark_as_unread(service, message_id):
 def archive_message(service, message_id):
     """Archive a message (remove from inbox)"""
     try:
-        service.users().messages().modify(
-            userId='me',
-            id=message_id,
-            body={'removeLabelIds': ['INBOX']}
-        ).execute()
+        message_ops = MessageOperations(service)
+        message_ops.archive_message(message_id)
         print(f"Message {message_id} archived")
     except Exception as e:
         print(f"Error archiving message: {str(e)}")
@@ -234,7 +199,8 @@ def archive_message(service, message_id):
 def trash_message(service, message_id):
     """Move a message to trash"""
     try:
-        service.users().messages().trash(userId='me', id=message_id).execute()
+        message_ops = MessageOperations(service)
+        message_ops.trash_message(message_id)
         print(f"Message {message_id} moved to trash")
     except Exception as e:
         print(f"Error moving message to trash: {str(e)}")
