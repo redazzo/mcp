@@ -4,6 +4,7 @@ import json
 from google.oauth2.credentials import Credentials
 from google_auth_oauthlib.flow import InstalledAppFlow
 from google.auth.transport.requests import Request
+from google.auth.exceptions import RefreshError
 from googleapiclient.discovery import build
 
 # Define the Gmail API scopes needed
@@ -32,6 +33,31 @@ class GmailClient:
         self.service = build('gmail', 'v1', credentials=creds)
         return self.service
     
+    def _safe_refresh_token(self, creds, token_path, credentials_path):
+        """Safely refresh the token, handling expired or revoked tokens.
+        
+        If token refresh fails, removes the token file and initiates a new OAuth flow.
+        
+        Args:
+            creds: The credentials to refresh
+            token_path: Path to the token.json file
+            credentials_path: Path to the credentials.json file
+            
+        Returns:
+            Refreshed or new credentials
+        """
+        try:
+            creds.refresh(Request())
+            return creds
+        except RefreshError as e:
+            print(f"Token refresh failed: {e}. Removing token and starting new auth flow.")
+            # Delete the invalid token file
+            if os.path.exists(token_path):
+                os.remove(token_path)
+            # Proceed with new OAuth flow
+            flow = InstalledAppFlow.from_client_secrets_file(credentials_path, SCOPES)
+            return flow.run_local_server(port=0)
+    
     def get_credentials(self):
         """Get valid user credentials from storage or initiate OAuth2 flow.
 
@@ -57,7 +83,7 @@ class GmailClient:
         # If no credentials or they're invalid, get new ones
         if not creds or not creds.valid:
             if creds and creds.expired and creds.refresh_token:
-                creds.refresh(Request())
+                creds = self._safe_refresh_token(creds, token_path, credentials_path)
             else:
                 flow = InstalledAppFlow.from_client_secrets_file(credentials_path, SCOPES)
                 creds = flow.run_local_server(port=0)
